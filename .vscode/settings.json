@@ -15,6 +15,7 @@
   "terminal.integrated.defaultProfile.windows": "Git Bash",
   "editor.minimap.enabled": false,
   "editor.stickyScroll.enabled": false,
+  "dotnet.server.useOmnisharp": false,
   "[csharp]": {
     "editor.defaultFormatter": "csharpier.csharpier-vscode",
     "editor.inlayHints.enabled": "offUnlessPressed",
