@@ -1,0 +1,107 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": 1,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "Active Execution Latency (P95 Database Duration) by Endpoint",
+      "type": "timeseries",
+      "id": 1,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate({__name__=\"db.client.operation.duration_seconds_bucket\", api_endpoint_route=~\"$endpoint\"}[1m])) by (le, api_endpoint_route))",
+          "legendFormat": "95th Percentile - {{api_endpoint_route}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth" },
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "title": "Connection Pool Sockets (Active vs Idle)",
+      "type": "timeseries",
+      "id": 2,
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "sum({__name__=\"db.client.connections.usage\", state=\"used\", api_endpoint_route=~\"$endpoint\"}) or sum({__name__=\"db.client.connections.active\", api_endpoint_route=~\"$endpoint\"})",
+          "legendFormat": "Active Sockets In-Use"
+        },
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "sum({__name__=\"db.client.connections.usage\", state=\"idle\"}) or sum({__name__=\"db.client.connections.idle\"})",
+          "legendFormat": "Idle Sockets Buffer"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line" }
+        }
+      }
+    },
+    {
+      "title": "Database Error Rate",
+      "type": "stat",
+      "id": 3,
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(rate({__name__=\"db.client.operation.duration_seconds_count\", error_type!=\"\", api_endpoint_route=~\"$endpoint\"}[1m])) or vector(0)",
+          "legendFormat": "Failures / sec"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["sql-server", "opentelemetry", "dotnet"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "prometheus" },
+        "definition": "label_values({__name__=~\"db.client.operation.duration_seconds_count\"}, api_endpoint_route)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": false,
+        "name": "endpoint",
+        "options": [],
+        "query": "label_values({__name__=~\"db.client.operation.duration_seconds_count\"}, api_endpoint_route)",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "SQL Client & API Performance"
+}
