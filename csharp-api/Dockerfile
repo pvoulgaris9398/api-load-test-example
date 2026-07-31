@@ -12,6 +12,8 @@ RUN dotnet publish -c Release -o out
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build-env /app/out .
+# Copy the database seed script so the API can run it on startup
+COPY --from=build-env /app/seed.sql ./seed.sql
 
 # Expose ports for handling traffic and exporting metrics
 EXPOSE 8080

@@ -8,10 +8,25 @@ var builder = WebApplication.CreateBuilder(args);
 var connString =
     "Server=sqlserver2025;Database=master;User Id=sa;Password=YourSecurePassword123!;Max Pool Size=150;TrustServerCertificate=True;";
 
+// Separate connection string targeting LoadTestDb for the scan endpoints
+var scanConnString =
+    "Server=sqlserver2025;Database=LoadTestDb;User Id=sa;Password=YourSecurePassword123!;Max Pool Size=150;TrustServerCertificate=True;";
+
 builder.AddAppTelemetryV2(serviceName);
 
 var app = builder.Build();
 app.UseOpenTelemetryPrometheusScrapingEndpoint();
+
+// ---------------------------------------------------------------------------
+// Database seeding
+// Runs the seed script against the SQL Server container on startup.
+// Safe to run multiple times — the script is guarded with IF NOT EXISTS.
+// ---------------------------------------------------------------------------
+await SeedDatabaseAsync(scanConnString, app.Logger);
+
+// ---------------------------------------------------------------------------
+// Original endpoints
+// ---------------------------------------------------------------------------
 
 // Endpoint Route 1
 app.MapGet(
@@ -39,4 +54,148 @@ app.MapGet(
     }
 );
 
+// ---------------------------------------------------------------------------
+// Table scan demo endpoints
+// ---------------------------------------------------------------------------
+
+// No index — forces a full table scan on CustomerId.
+// Use this for the first load test run to establish the baseline.
+app.MapGet(
+    "/v1/scan",
+    async () =>
+    {
+        // Rotate through customer IDs so each request scans for a different customer,
+        // preventing SQL Server from short-circuiting via plan caching tricks.
+        var customerId = Random.Shared.Next(1, 10001);
+        using var connection = new SqlConnection(scanConnString);
+        var orders = await connection.QueryAsync<Order>(
+            "SELECT OrderId, CustomerId, OrderDate, Status, Amount FROM Orders WHERE CustomerId = @CustomerId",
+            new { CustomerId = customerId }
+        );
+        return Results.Ok(new { customerId, orderCount = orders.Count() });
+    }
+);
+
+// Same query — benefits from the index added via POST /v1/add-index.
+// Use this for the second load test run to compare against the baseline.
+app.MapGet(
+    "/v1/indexed-scan",
+    async () =>
+    {
+        var customerId = Random.Shared.Next(1, 10001);
+        using var connection = new SqlConnection(scanConnString);
+        var orders = await connection.QueryAsync<Order>(
+            "SELECT OrderId, CustomerId, OrderDate, Status, Amount FROM Orders WHERE CustomerId = @CustomerId",
+            new { CustomerId = customerId }
+        );
+        return Results.Ok(new { customerId, orderCount = orders.Count() });
+    }
+);
+
+// Adds a non-clustered index on CustomerId.
+// Call this between load test runs: POST http://localhost:8080/v1/add-index
+app.MapPost(
+    "/v1/add-index",
+    async () =>
+    {
+        using var connection = new SqlConnection(scanConnString);
+        await connection.ExecuteAsync(
+            """
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.indexes
+                WHERE name = 'IX_Orders_CustomerId' AND object_id = OBJECT_ID('Orders')
+            )
+            BEGIN
+                CREATE NONCLUSTERED INDEX IX_Orders_CustomerId ON Orders (CustomerId)
+                INCLUDE (OrderDate, Status, Amount);
+            END
+            """
+        );
+        return Results.Ok(new { status = "Index created", index = "IX_Orders_CustomerId" });
+    }
+);
+
+// Drops the index so you can repeat the unindexed run without recreating the table.
+// Call this to reset: POST http://localhost:8080/v1/drop-index
+app.MapPost(
+    "/v1/drop-index",
+    async () =>
+    {
+        using var connection = new SqlConnection(scanConnString);
+        await connection.ExecuteAsync(
+            """
+            IF EXISTS (
+                SELECT 1 FROM sys.indexes
+                WHERE name = 'IX_Orders_CustomerId' AND object_id = OBJECT_ID('Orders')
+            )
+            BEGIN
+                DROP INDEX IX_Orders_CustomerId ON Orders;
+            END
+            """
+        );
+        return Results.Ok(new { status = "Index dropped", index = "IX_Orders_CustomerId" });
+    }
+);
+
 app.Run();
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+static async Task SeedDatabaseAsync(string connectionString, ILogger logger)
+{
+    // The seed script targets LoadTestDb which may not exist yet on a fresh container.
+    // Connect to master first, then run the full seed SQL.
+    var masterConnString = connectionString.Replace("Database=LoadTestDb", "Database=master");
+    var seedScriptPath = Path.Combine(AppContext.BaseDirectory, "seed.sql");
+
+    if (!File.Exists(seedScriptPath))
+    {
+        logger.LogWarning(
+            "Seed script not found at {Path} — skipping database seeding.",
+            seedScriptPath
+        );
+        return;
+    }
+
+    var sql = await File.ReadAllTextAsync(seedScriptPath);
+
+    // sqlcmd-style GO batch separators are not understood by SqlClient — split manually.
+    var batches = sql.Split(["\nGO", "\r\nGO"], StringSplitOptions.RemoveEmptyEntries)
+        .Select(b => b.Trim())
+        .Where(b => b.Length > 0);
+
+    // Retry a few times to handle the container health-check window.
+    const int maxRetries = 10;
+    for (int attempt = 1; attempt <= maxRetries; attempt++)
+    {
+        try
+        {
+            using var connection = new SqlConnection(masterConnString);
+            await connection.OpenAsync();
+
+            foreach (var batch in batches)
+            {
+                await connection.ExecuteAsync(batch);
+            }
+
+            logger.LogInformation("Database seeding complete.");
+            return;
+        }
+        catch (Exception ex) when (attempt < maxRetries)
+        {
+            logger.LogWarning(
+                "Seeding attempt {Attempt}/{Max} failed: {Message}. Retrying in 3s…",
+                attempt,
+                maxRetries,
+                ex.Message
+            );
+            await Task.Delay(TimeSpan.FromSeconds(3));
+        }
+    }
+
+    logger.LogError("Database seeding failed after {Max} attempts.", maxRetries);
+}
+
+record Order(int OrderId, int CustomerId, DateTime OrderDate, string Status, decimal Amount);
