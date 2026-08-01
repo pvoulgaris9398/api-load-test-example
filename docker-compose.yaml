@@ -6,13 +6,13 @@ services:
     container_name: sqlserver2025
     environment:
       - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=YourSecurePassword123!
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD}
       - DOTNET_Metrics_Microsoft_Data_SqlClient=true
     ports:
       - "1433:1433"
     # Ensures the SQL engine is genuinely up and accepting queries before other services connect
     healthcheck:
-      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "YourSecurePassword123!", "-Q", "SELECT 1", "-C"]
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "${MSSQL_SA_PASSWORD}", "-Q", "SELECT 1", "-C"]
       interval: 10s
       timeout: 5s
       retries: 5      
@@ -22,10 +22,14 @@ services:
     build:
       context: ./csharp-api/.
       dockerfile: Dockerfile
+    environment:
+      ConnectionStrings__Master: "Server=db-server;Database=master;User Id=sa;Password=${MSSQL_SA_PASSWORD};Max Pool Size=150;TrustServerCertificate=True;"
+      ConnectionStrings__LoadTest: "Server=db-server;Database=LoadTestDb;User Id=sa;Password=${MSSQL_SA_PASSWORD};Max Pool Size=150;TrustServerCertificate=True;"
     ports:
       - "8080:8080"
     depends_on:
-      - db-server
+      db-server:
+        condition: service_healthy
 
   prometheus:
     image: prom/prometheus:latest

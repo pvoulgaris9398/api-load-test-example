@@ -5,12 +5,23 @@ using PoolMonitoringApi;
 const string serviceName = "pool-monitoring-api";
 var builder = WebApplication.CreateBuilder(args);
 
+// Connection strings are read from environment variables:
+//   ConnectionStrings__Master   → used by the original endpoints (targets master DB)
+//   ConnectionStrings__LoadTest → used by the scan demo endpoints (targets LoadTestDb)
+// The double-underscore is the ASP.NET Core config hierarchy separator, which maps
+// directly to the ConnectionStrings section so GetConnectionString() resolves them.
 var connString =
-    "Server=sqlserver2025;Database=master;User Id=sa;Password=YourSecurePassword123!;Max Pool Size=150;TrustServerCertificate=True;";
+    builder.Configuration.GetConnectionString("Master")
+    ?? throw new InvalidOperationException(
+        "Missing required configuration: ConnectionStrings__Master"
+    );
 
 // Separate connection string targeting LoadTestDb for the scan endpoints
 var scanConnString =
-    "Server=sqlserver2025;Database=LoadTestDb;User Id=sa;Password=YourSecurePassword123!;Max Pool Size=150;TrustServerCertificate=True;";
+    builder.Configuration.GetConnectionString("LoadTest")
+    ?? throw new InvalidOperationException(
+        "Missing required configuration: ConnectionStrings__LoadTest"
+    );
 
 builder.AddAppTelemetryV2(serviceName);
 
