@@ -8,7 +8,7 @@
  *   curl -X POST http://localhost:8080/v1/add-index
  *
  * Run 2 — with index:
- *   k6 run -e ENDPOINT=indexed load-test-scan.js
+ *   k6 run load-test-scan.js
  *
  * To reset back to no index:
  *   curl -X POST http://localhost:8080/v1/drop-index
@@ -17,10 +17,9 @@
 import http from 'k6/http';
 import { sleep, check } from 'k6';
 
-// Switch between scan (no index) and indexed-scan via the ENDPOINT env var.
-// Default is the unindexed scan so a plain `k6 run` gives the baseline.
-const endpoint = __ENV.ENDPOINT === 'indexed' ? 'indexed-scan' : 'scan';
-const url = `http://localhost:8080/v1/${endpoint}`;
+const baseUrl = (__ENV.BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
+const endpoint = '/v1/orders/by-customer';
+const url = `${baseUrl}${endpoint}`;
 
 export const options = {
   stages: [
@@ -35,7 +34,9 @@ export const options = {
 };
 
 export default function () {
-  const res = http.get(url);
+  const res = http.get(url, {
+    tags: { scenario: 'table-scan-comparison', endpoint },
+  });
 
   check(res, {
     'status is 200': (r) => r.status === 200,

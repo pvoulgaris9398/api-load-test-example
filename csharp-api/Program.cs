@@ -7,7 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Connection strings are read from environment variables:
 //   ConnectionStrings__Master   → used by the original endpoints (targets master DB)
-//   ConnectionStrings__LoadTest → used by the scan demo endpoints (targets LoadTestDb)
+//   ConnectionStrings__LoadTest → used by the orders experiment (targets LoadTestDb)
 // The double-underscore is the ASP.NET Core config hierarchy separator, which maps
 // directly to the ConnectionStrings section so GetConnectionString() resolves them.
 var connString =
@@ -16,7 +16,7 @@ var connString =
         "Missing required configuration: ConnectionStrings__Master"
     );
 
-// Separate connection string targeting LoadTestDb for the scan endpoints
+// Separate connection string targeting LoadTestDb for the orders experiment
 var scanConnString =
     builder.Configuration.GetConnectionString("LoadTest")
     ?? throw new InvalidOperationException(
@@ -27,6 +27,7 @@ builder.AddAppTelemetryV2(serviceName);
 
 var app = builder.Build();
 app.UseOpenTelemetryPrometheusScrapingEndpoint();
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 
 // ---------------------------------------------------------------------------
 // Database seeding
@@ -66,33 +67,17 @@ app.MapGet(
 );
 
 // ---------------------------------------------------------------------------
-// Table scan demo endpoints
+// Table scan vs index demo endpoint
 // ---------------------------------------------------------------------------
 
-// No index — forces a full table scan on CustomerId.
-// Use this for the first load test run to establish the baseline.
+// The query is intentionally unchanged between test runs. Without the optional
+// CustomerId index it performs a table scan; after POST /v1/add-index it uses the index.
 app.MapGet(
-    "/v1/scan",
+    "/v1/orders/by-customer",
     async () =>
     {
         // Rotate through customer IDs so each request scans for a different customer,
         // preventing SQL Server from short-circuiting via plan caching tricks.
-        var customerId = Random.Shared.Next(1, 10001);
-        using var connection = new SqlConnection(scanConnString);
-        var orders = await connection.QueryAsync<Order>(
-            "SELECT OrderId, CustomerId, OrderDate, Status, Amount FROM Orders WHERE CustomerId = @CustomerId",
-            new { CustomerId = customerId }
-        );
-        return Results.Ok(new { customerId, orderCount = orders.Count() });
-    }
-);
-
-// Same query — benefits from the index added via POST /v1/add-index.
-// Use this for the second load test run to compare against the baseline.
-app.MapGet(
-    "/v1/indexed-scan",
-    async () =>
-    {
         var customerId = Random.Shared.Next(1, 10001);
         using var connection = new SqlConnection(scanConnString);
         var orders = await connection.QueryAsync<Order>(

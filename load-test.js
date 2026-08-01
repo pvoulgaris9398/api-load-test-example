@@ -1,6 +1,9 @@
 import http from 'k6/http';
 import { sleep, check } from 'k6';
 
+const baseUrl = (__ENV.BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
+const endpoint = __ENV.ENDPOINT || '/v1/data-endpoint';
+
 export const options = {
   stages: [
     { duration: '30s', target: 200 },  // Ramp to 200 virtual users
@@ -14,7 +17,9 @@ export const options = {
 };
 
 export default function () {
-  const res = http.get('http://localhost:8080/v1/data-endpoint');
+  const res = http.get(`${baseUrl}${endpoint}`, {
+    tags: { scenario: 'connection-pool', endpoint },
+  });
   
   check(res, {
     'status is 200': (r) => r.status === 200,

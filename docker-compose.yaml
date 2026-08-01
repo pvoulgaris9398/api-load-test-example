@@ -2,7 +2,7 @@ name: api-load-test-example
 
 services:
   db-server:
-    image: mcr.microsoft.com/mssql/server:2025-latest
+    image: ${SQLSERVER_IMAGE:-mcr.microsoft.com/mssql/server:2025-latest}
     container_name: sqlserver2025
     environment:
       - ACCEPT_EULA=Y
@@ -25,6 +25,8 @@ services:
     environment:
       ConnectionStrings__Master: "Server=db-server;Database=master;User Id=sa;Password=${MSSQL_SA_PASSWORD};Max Pool Size=150;TrustServerCertificate=True;"
       ConnectionStrings__LoadTest: "Server=db-server;Database=LoadTestDb;User Id=sa;Password=${MSSQL_SA_PASSWORD};Max Pool Size=150;TrustServerCertificate=True;"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
     ports:
       - "8080:8080"
     depends_on:
@@ -32,7 +34,7 @@ services:
         condition: service_healthy
 
   prometheus:
-    image: prom/prometheus:latest
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.5.5}
     container_name: prometheus
     volumes:
       # Apparently this container expects the "prometheus.yml" not "yaml"
@@ -43,13 +45,13 @@ services:
       - api-service
 
   grafana:
-    image: grafana/grafana:latest
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.1.1}
     container_name: grafana
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=dude!      
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     volumes:
       # Data source auto-configuration
       # Same for data source: "datasource.yml" not "yaml"

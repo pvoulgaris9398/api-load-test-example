@@ -63,6 +63,10 @@ public static class OpenTelemetryExtensions
         string serviceName
     )
     {
+        var otlpEnabled = !string.IsNullOrWhiteSpace(
+            builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]
+        );
+
         // 1. Define shared resource metadata
         var resourceBuilder = ResourceBuilder
             .CreateDefault()
@@ -78,6 +82,7 @@ public static class OpenTelemetryExtensions
         builder
             .Services.AddOpenTelemetry()
             .WithTracing(tracing =>
+            {
                 tracing
                     .SetResourceBuilder(resourceBuilder)
                     // (1a) Enrich HTTP spans with route info and classify SQL-related failures
@@ -113,24 +118,27 @@ public static class OpenTelemetryExtensions
                         // (1b) Tag each SQL span with the calling HTTP route for correlation
                         options.Enrich = (activity, eventName, obj) =>
                         {
-                            var httpRoute =
-                                Activity.Current?.GetTagItem("http.route")?.ToString()
-                                ?? Activity.Current?.GetTagItem("api.path")?.ToString()
-                                ?? "unknown-endpoint";
+                            var httpRoute = FindParentTag(activity, "http.route", "api.path");
                             activity.SetTag("api.endpoint.route", httpRoute);
                         };
-                    })
-                    .AddOtlpExporter()
-            ) // Reads OTEL_EXPORTER_OTLP_ENDPOINT automatically
+                    });
+
+                if (otlpEnabled)
+                    tracing.AddOtlpExporter();
+            })
             .WithMetrics(metrics =>
+            {
                 metrics
                     .SetResourceBuilder(resourceBuilder)
                     .AddAspNetCoreInstrumentation()
                     .AddSqlClientInstrumentation() // Built-in db.client.connections.* metrics
-                    // (2) Bridge Microsoft.Data.SqlClient EventSource counters into OTel metrics
+                                                   // (2) Bridge Microsoft.Data.SqlClient EventSource counters into OTel metrics
                     .AddMeter(SqlClientMeterName)
-                    .AddOtlpExporter()
-                    .AddPrometheusExporter() // Enables /metrics scrape endpoint for Prometheus
+                    .AddPrometheusExporter(); // Enables /metrics scrape endpoint for Prometheus
+
+                if (otlpEnabled)
+                    metrics.AddOtlpExporter();
+            }
             );
 
         // 3. Configure Logging
@@ -139,7 +147,8 @@ public static class OpenTelemetryExtensions
             logging.SetResourceBuilder(resourceBuilder);
             logging.IncludeFormattedMessage = true;
             logging.IncludeScopes = true;
-            logging.AddOtlpExporter();
+            if (otlpEnabled)
+                logging.AddOtlpExporter();
         });
 
         // (2) Register the EventSource bridge as a hosted singleton so it starts with the app
@@ -147,6 +156,20 @@ public static class OpenTelemetryExtensions
         builder.Services.AddHostedService(sp => sp.GetRequiredService<SqlClientEventBridge>());
 
         return builder;
+    }
+
+    private static string FindParentTag(Activity activity, params string[] tagNames)
+    {
+        for (Activity? current = activity; current is not null; current = current.Parent)
+        {
+            foreach (var tagName in tagNames)
+            {
+                if (current.GetTagItem(tagName)?.ToString() is { Length: > 0 } value)
+                    return value;
+            }
+        }
+
+        return "unknown-endpoint";
     }
 }
 

@@ -1,7 +1,7 @@
 -- Creates the load test database and a table with 500k rows.
 -- Designed to be run once on first container start.
 -- The Orders table has no index on CustomerId initially, forcing a full table
--- scan on the /v1/scan endpoint. Use POST /v1/add-index to add the index
+-- scan on the /v1/orders/by-customer endpoint. Use POST /v1/add-index to add the index
 -- between load test runs to observe the performance difference.
 
 USE master;

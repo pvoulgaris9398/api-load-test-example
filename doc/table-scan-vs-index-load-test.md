@@ -15,7 +15,7 @@ rebuilt with the seed script included. On startup, the API automatically creates
 and seeds the `Orders` table with 500,000 rows. This takes around 20–30 seconds — watch the
 API container logs if you want to confirm it's done before running the test.
 
-```cmd
+```bash
 docker compose logs -f api-service
 ```
 
@@ -26,11 +26,12 @@ Look for: `Database seeding complete.`
 The `Orders` table has no index on `CustomerId` at this point. Every request causes SQL Server
 to scan all 500k rows to find the matching orders.
 
-```cmd
+```bash
 k6 run load-test-scan.js
 ```
 
-While the test is running, open Grafana at http://localhost:3000 (admin / dude!) and watch:
+While the test is running, open Grafana at http://localhost:3000 and sign in using the
+credentials configured in `.env`. Watch:
 
 - **Active Execution Latency (P95)** — expect this to climb significantly, likely well above 500ms
 - **Connection Pool: Active vs Free vs Stasis** — Free connections will drop toward zero; Stasis
@@ -39,8 +40,8 @@ While the test is running, open Grafana at http://localhost:3000 (admin / dude!)
 
 You can also confirm the scan is happening in SQL Server while the test is running:
 
-```cmd
-docker exec -it sqlserver2025 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourSecurePassword123!" -C -Q "SELECT session_id, wait_type, wait_time, status FROM sys.dm_exec_requests WHERE session_id > 50 AND wait_type IS NOT NULL ORDER BY wait_time DESC"
+```bash
+docker compose exec db-server /bin/bash -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -Q "SELECT session_id, wait_type, wait_time, status FROM sys.dm_exec_requests WHERE session_id > 50 AND wait_type IS NOT NULL ORDER BY wait_time DESC"'
 ```
 
 Expect to see many sessions in `PAGEIOLATCH_SH` or `SOS_SCHEDULER_YIELD` — indicators of IO
@@ -52,7 +53,7 @@ Record (or screenshot) the k6 summary and Grafana panels before moving to Run 2.
 
 Between runs, add the non-clustered index via the management endpoint:
 
-```cmd
+```bash
 curl -X POST http://localhost:8080/v1/add-index
 ```
 
@@ -66,8 +67,8 @@ can satisfy the query entirely from the index without a key lookup back to the b
 
 ## Run 2: With index
 
-```cmd
-k6 run -e ENDPOINT=indexed load-test-scan.js
+```bash
+k6 run load-test-scan.js
 ```
 
 Both runs hit the same query — the only difference is the presence of the index. In Grafana:
@@ -81,13 +82,13 @@ Both runs hit the same query — the only difference is the presence of the inde
 
 To drop the index and repeat the baseline:
 
-```cmd
+```bash
 curl -X POST http://localhost:8080/v1/drop-index
 ```
 
 To fully reset the database (drop and re-seed), restart the stack:
 
-```cmd
+```bash
 docker compose down
 docker compose up --build -d
 ```
@@ -96,10 +97,9 @@ docker compose up --build -d
 
 | Method | Endpoint              | Description                                      |
 |--------|-----------------------|--------------------------------------------------|
-| GET    | /v1/scan              | Query by CustomerId — no index (table scan)      |
-| GET    | /v1/indexed-scan      | Same query — uses index when present             |
-| POST   | /v1/add-index         | Creates IX_Orders_CustomerId                     |
-| POST   | /v1/drop-index        | Drops IX_Orders_CustomerId                       |
+| GET    | /v1/orders/by-customer | Query by CustomerId; execution depends on index state |
+| POST   | /v1/add-index          | Creates IX_Orders_CustomerId                          |
+| POST   | /v1/drop-index         | Drops IX_Orders_CustomerId                            |
 
 ## What to observe
 
