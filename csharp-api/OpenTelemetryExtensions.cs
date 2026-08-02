@@ -17,8 +17,8 @@ public static class OpenTelemetryExtensions
 {
     // Short meter name used by SqlClientEventBridge to publish pool metrics.
     // Kept intentionally short — the OTel Prometheus exporter uses this as a
-    // namespace prefix, so "sqlclient" produces metric names like
-    // "sqlclient_pool_connections_free" rather than a long dotted prefix.
+    // instrumentation scope, while instrument names remain queryable in Prometheus using their
+    // OpenTelemetry dotted form, for example {__name__="sqlclient.pool.connections_free"}.
     internal const string SqlClientMeterName = "sqlclient";
 
     public static WebApplicationBuilder AddAppTelemetryV1(

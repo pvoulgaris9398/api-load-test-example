@@ -16,7 +16,7 @@
         {
           "datasource": { "type": "prometheus" },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate({__name__=\"http.server.request.duration_seconds_bucket\", http.route=~\"$endpoint\"}[1m])) by (le, http.route))",
+          "expr": "histogram_quantile(0.95, sum(rate({__name__=\"http.server.request.duration_seconds_bucket\", \"http.route\"=~\"$endpoint\"}[1m])) by (le, \"http.route\"))",
           "legendFormat": "P95 - {{http.route}}"
         }
       ],
@@ -74,7 +74,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus" },
-          "expr": "sum(rate({__name__=\"http.server.request.duration_seconds_count\", http.route=~\"$endpoint\", http.response.status_code=~\"5..\"}[1m])) or vector(0)",
+          "expr": "sum(rate({__name__=\"http.server.request.duration_seconds_count\", \"http.route\"=~\"$endpoint\", \"http.response.status_code\"=~\"5..\"}[1m])) or vector(0)",
           "legendFormat": "Failures / sec"
         }
       ],
@@ -221,15 +221,16 @@
   "templating": {
     "list": [
       {
-        "current": {},
+        "allValue": ".*",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
         "datasource": { "type": "prometheus" },
-        "definition": "label_values({__name__=\"http.server.request.duration_seconds_count\"}, http.route)",
+        "definition": "label_values({__name__=\"http.server.request.duration_seconds_count\"}, \"http.route\")",
         "hide": 0,
         "includeAll": true,
         "multi": false,
         "name": "endpoint",
         "options": [],
-        "query": "label_values({__name__=\"http.server.request.duration_seconds_count\"}, http.route)",
+        "query": "label_values({__name__=\"http.server.request.duration_seconds_count\"}, \"http.route\")",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,

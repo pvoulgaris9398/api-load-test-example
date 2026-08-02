@@ -2,7 +2,9 @@ import http from 'k6/http';
 import { sleep, check } from 'k6';
 
 const baseUrl = (__ENV.BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
-const endpoint = __ENV.ENDPOINT || '/v1/data-endpoint';
+// Prefer a slashless ENDPOINT value on Git Bash for Windows. MSYS otherwise treats a value such
+// as /v1/admin-report as a filesystem path and rewrites it before k6 receives the argument.
+const endpoint = `/${(__ENV.ENDPOINT || 'v1/data-endpoint').replace(/^\/+/, '')}`;
 
 export const options = {
   stages: [

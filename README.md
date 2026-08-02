@@ -54,8 +54,11 @@ k6 run load-test.js
 Override the API location or endpoint when needed:
 
 ```bash
-k6 run -e BASE_URL=http://localhost:8080 -e ENDPOINT=/v1/admin-report load-test.js
+k6 run -e BASE_URL=http://localhost:8080 -e ENDPOINT=v1/admin-report load-test.js
 ```
+
+Use a slashless `ENDPOINT` value when running from Git Bash on Windows. A leading `/` can be
+mistaken for a filesystem path and rewritten to a path under the Git installation directory.
 
 The default p95 threshold is 150 ms, intentionally leaving little headroom above the artificial
 database delay so saturation becomes visible.

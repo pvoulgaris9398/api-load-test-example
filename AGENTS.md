@@ -5,6 +5,9 @@
 - Prefer Bash syntax for terminal commands, examples, scripts, and documentation.
 - Use PowerShell or Command Prompt only when a command is specifically Windows-only and has no
   practical Bash equivalent, such as the documented `winget` installation for Grafana k6.
+- For Git Bash commands on Windows, avoid passing slash-prefixed URL paths as standalone CLI
+  argument values because MSYS path conversion can rewrite them. Prefer values such as
+  `ENDPOINT=v1/admin-report` and normalize the leading slash inside the application or script.
 - Preserve the user's uncommitted changes. Do not commit, push, or otherwise publish changes; the
   user manages Git and GitHub.
 - Keep edits focused on the requested work and avoid unrelated formatting or generated-file churn.
@@ -45,6 +48,21 @@
   and enabled only when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured.
 - Treat this as a local-only demo. Do not imply that its exposed ports, unauthenticated management
   endpoints, SA account, or `TrustServerCertificate=True` are production-safe.
+
+## OpenTelemetry and Prometheus naming
+
+- Preserve OpenTelemetry metric names with dots between semantic sections. Query dotted metric
+  names in PromQL through the special name label, for example
+  `{__name__="sqlclient.connections.active_hard"}`; do not rewrite them as underscore identifiers
+  in dashboards.
+- Quote dotted OpenTelemetry label names inside PromQL selectors and aggregation clauses. Examples:
+  `{"http.route"=~"$endpoint"}`, `{"http.response.status_code"=~"5.."}`, and
+  `by (le, "http.route")`. An unquoted dotted label is a PromQL parse error.
+- Verify names against Prometheus's stored series through its API, not only the raw `/metrics`
+  response. Content negotiation may show underscore-escaped names in a direct browser scrape even
+  though Prometheus negotiates and stores the original dotted OpenTelemetry names.
+- When editing Grafana dashboards, validate every changed PromQL expression against the running
+  Prometheus API when available, and ensure dashboard variables use quoted dotted label names.
 
 ## Validation
 
